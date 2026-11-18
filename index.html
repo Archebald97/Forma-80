@@ -27,7 +27,7 @@ if(!db.defaultWeightsV15){
  try{localStorage.setItem(DBKEY,JSON.stringify(db))}catch(e){console.warn('Weight migration could not be saved',e)}
 }
 // Preserve every historical session's original exercise list; refresh only untouched future drafts.
-for(const saved of Object.values(db.sessions)){
+if(!db.approvedV2Migration){for(const saved of Object.values(db.sessions)){
  if(!saved?.date||!saved?.day||!saved.exercises)continue;
  const oldIds=Object.keys(saved.exercises);
  const touched=Boolean(saved.finishedAt)||Object.values(saved.exercises).some(v=>v?.sets?.some(z=>z.done));
@@ -45,7 +45,7 @@ for(const saved of Object.values(db.sessions)){
   saved.exercises=ex;saved.planIds=[...ids];
  }else if(!saved.planIds)saved.planIds=oldIds;
 }
-try{localStorage.setItem(DBKEY,JSON.stringify(db))}catch(e){console.warn('Migration not saved',e)}
+db.approvedV2Migration=true;try{localStorage.setItem(DBKEY,JSON.stringify(db))}catch(e){console.warn('Migration not saved',e)}}
 const key=(date,day)=>date+'|'+day;const template=(date,day)=>{const s=db.sessions?.[key(date,day)];return s?.planIds||T[date>=CUTOVER?'after':'before'][day]};const allSessions=()=>Object.values(db.sessions).filter(x=>x&&x.date&&x.day&&x.exercises).sort((a,b)=>b.date.localeCompare(a.date)||b.day.localeCompare(a.day));
 function prior(exid,date,day){return allSessions().filter(s=>s.date<date&&s.exercises[exid]&&s.exercises[exid].sets?.some(z=>z.done)).sort((a,b)=>b.date.localeCompare(a.date))[0]?.exercises[exid]||null}
 function session(date=ui.date,day=ui.day){let k=key(date,day);if(!db.sessions[k]){const ids=template(date,day);let exercises={};for(const id of ids){let e=E[id],p=prior(id,date,day);let n=e.sets+(e.optional||0);exercises[id]={sets:Array.from({length:n},(_,i)=>{let old=p?.sets?.[i];let weight=old?.done?old.weight:(p?.sets?.find(z=>z.done)?.weight??e.weight??0);let reps=old?.reps??e.min;return {weight,reps,done:false,enabled:i<e.sets}})}}db.sessions[k]={date,day,planIds:[...ids],exercises,note:'',createdAt:new Date().toISOString()};save()}return db.sessions[k]}
