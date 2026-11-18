@@ -52,7 +52,7 @@ const key=(date,day)=>date+'|'+day;const template=(date,day)=>{const saved=db.se
   if(!response.ok)throw Error('HTTP '+response.status);
   const p=await response.json();
   const ids=Object.keys(E);
-  if(p.schema!==1||!/^v[0-9]+$/.test(p.version)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(p.effectiveDate)||!p.days||!p.exercises)throw Error('Invalid program');
+  if(p.schema!==1||!/^v[0-9]+$/.test(p.version)||!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate)||!p.days||!p.exercises)throw Error('Invalid program');
   for(const day of ['A','B']){
    if(!Array.isArray(p.days[day])||!p.days[day].length||new Set(p.days[day]).size!==p.days[day].length||p.days[day].some(id=>!ids.includes(id)))throw Error('Invalid day');
   }
