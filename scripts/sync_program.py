@@ -16,7 +16,7 @@ date = dates.pop()
 if len(date)!=10 or date[4]!='-' or date[7]!='-': raise ValueError("Invalid effective date")
 days = {"A":[], "B":[]}; exercises={}; positions={"A":set(),"B":set()}
 for r in approved:
-    day=r["День"].strip().upper().replace("ДЕНЬ ","")
+    day=r["День"].strip().upper().replace("ДЕНЬ ","").replace("А","A").replace("В","B")
     if day not in days: raise ValueError("Unexpected day")
     eid=r["ID упражнения"].strip()
     if not eid.isascii() or not eid.isalnum() or eid in exercises: raise ValueError("Invalid or duplicate exercise ID")
