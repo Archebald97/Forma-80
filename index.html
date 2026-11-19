@@ -273,8 +273,9 @@ function renderAnalytics(){
  const max=Math.max(1,...v.map(x=>x.steps||0));for(let i=0;i<recent.length;i++)html+='<div class="row small" style="margin:8px 0"><span style="min-width:90px">'+esc(fmt(recent[i]))+'</span><div class="bar" style="flex:1;margin:0"><div style="width:'+Math.round((v[i].steps||0)/max*100)+'%"></div></div><b style="min-width:70px;text-align:right">'+num(v[i].steps||0)+'</b></div>';
  html+='<p class="small muted">Показаны последние 7 дней с записями, не обязательно 7 календарных дней. Показатели зависят от полноты экспорта.</p>';
  }else html+='<div class="empty">Пока не импортированы данные Health Connect.</div>';
- html+='</div>';$('analytics').innerHTML=html;
+ html+='<div class="btnrow"><button class="btn" id="healthCloudPull">↻ Обновить из облака</button></div></div>';$('analytics').innerHTML=html;
  $('healthImport').onclick=()=>$('healthImportFile').click();
+ if($('healthCloudPull'))$('healthCloudPull').onclick=()=>healthCloudPull(false);
  $('healthClear').onclick=()=>{if(!confirm('Удалить только импортированные показатели Health Connect с этого устройства? Тренировки сохранятся.'))return;localStorage.removeItem(HEALTHKEY);healthDb=null;render();toast('Показатели удалены')};
 }
 $('healthImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{if(file.size>3e6)throw Error('Слишком большой файл');const data=JSON.parse(await file.text());if(data.app!=='forma80-health'||data.schema!==1||!data.days||Array.isArray(data.days)||typeof data.days!=='object'||Object.keys(data.days).length>10000)throw Error('Неверный формат');for(const [d,v] of Object.entries(data.days)){if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!v||typeof v!=='object'||Array.isArray(v)||!Object.keys(v).length||Object.keys(v).some(k=>!['steps','activeKcal','sleepMinutes','heartRate','heartRateAvg','exerciseSessions'].includes(k)||!Number.isFinite(v[k])||v[k]<0||v[k]>1e7))throw Error('Неверные данные за '+d)}const previous=healthDb?.schema===1&&healthDb.days&&typeof healthDb.days==='object'?healthDb.days:{};const merged={app:'forma80-health',schema:1,days:{...previous}};for(const [d,v] of Object.entries(data.days))merged.days[d]={...(merged.days[d]||{}),...v};localStorage.setItem(HEALTHKEY,JSON.stringify(merged));healthDb=merged;render();toast('Показатели добавлены ✓')}catch(err){alert('Ошибка импорта: '+err.message)}finally{e.target.value=''}};
@@ -287,11 +288,36 @@ async function cloudInit(){
   cloudClient=mod.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
   const {data,error}=await cloudClient.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')cloudError=error.message;
   cloudUser=data?.user||null;
-  cloudClient.auth.onAuthStateChange((_event,session)=>{cloudUser=session?.user||null;if(ui.page==='settings')renderSettings()});
+  if(cloudUser)healthCloudPull(true);
+  cloudClient.auth.onAuthStateChange((_event,session)=>{cloudUser=session?.user||null;if(cloudUser)healthCloudPull(true);if(ui.page==='settings')renderSettings()});
  }catch(e){cloudError='Не удалось загрузить модуль авторизации: '+e.message}
  if(ui.page==='settings')renderSettings();
 }
 
+
+// Health Connect cloud sync: read-only on the PWA; Android companion will write rows.
+let healthCloudBusy=false;
+async function healthCloudPull(silent=false){
+ if(healthCloudBusy||!cloudClient||!cloudUser)return;
+ healthCloudBusy=true;
+ try{
+  const {data,error}=await cloudClient.from('forma80_health_sync')
+   .select('day,metrics').eq('user_id',cloudUser.id).order('day',{ascending:false}).limit(365);
+  if(error)throw error;
+  const allowed=['steps','activeKcal','sleepMinutes','heartRate','heartRateAvg','exerciseSessions'];
+  const days={...(healthDb?.schema===1&&healthDb.days||{})};
+  let count=0;
+  for(const row of data||[]){
+   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.day)||!row.metrics||typeof row.metrics!=='object'||Array.isArray(row.metrics))continue;
+   const clean={};
+   for(const k of allowed)if(Number.isFinite(row.metrics[k])&&row.metrics[k]>=0&&row.metrics[k]<=1e7)clean[k]=row.metrics[k];
+   if(Object.keys(clean).length){days[row.day]={...(days[row.day]||{}),...clean};count++}
+  }
+  if(count){healthDb={app:'forma80-health',schema:1,days};localStorage.setItem(HEALTHKEY,JSON.stringify(healthDb));render()}
+  if(!silent)toast('Показатели из облака: '+count+' дн.');
+ }catch(e){if(!silent)alert('Синхронизация показателей: '+e.message)}
+ finally{healthCloudBusy=false}
+}
 let cloudBusy=false;
 function cloudValidSession(k,v){return /^\d{4}-\d{2}-\d{2}\|[AB]$/.test(k)&&v&&typeof v==='object'&&v.exercises&&typeof v.exercises==='object'&&Object.values(v.exercises).every(e=>e&&Array.isArray(e.sets)&&e.sets.length<=10&&e.sets.every(z=>Number.isFinite(z.weight)&&z.weight>=0&&z.weight<=500&&Number.isInteger(z.reps)&&z.reps>=0&&z.reps<=500&&typeof z.done==='boolean'&&typeof z.enabled==='boolean'))}
 function cloudHasResults(v){return !!(v?.finishedAt||Object.values(v?.exercises||{}).some(e=>e?.sets?.some(z=>z.done)))}
