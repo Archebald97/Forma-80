@@ -118,7 +118,7 @@ body{background:radial-gradient(ellipse 75% 22% at 50% -4%,#202b6a 0%,transparen
 .cy-dash-foot{font-size:10px;color:#8997bc;line-height:1.5;margin:10px 3px 0}
 @media(min-width:700px){.cy-stat-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.cy-stat{min-height:157px;padding:17px 14px}.cy-stat-value{font-size:33px}}
 @media(max-width:370px){.cy-stat{padding:13px;min-height:129px}.cy-stat-period{font-size:9px}.cy-stat-value{font-size:27px}}
-</style></head><body><main class="wrap"><header class="head"><div><div class="brand">ФОРМА <span>80</span></div><div class="sub">Сила • движение • прогресс</div></div><span class="pill">v2.6 · CYBER</span></header><section class="cy-dashboard" id="cyDashboard" aria-label="Сводка активности"></section><nav class="tabs" id="mainTabs"><button data-page="workout" class="active">Тренировка</button><button data-page="weekly">Неделя</button><button data-page="history">История</button><button data-page="progress">Прогресс</button><button data-page="analytics">Аналитика</button><button data-page="settings">Данные</button></nav><section class="section active" id="workout"></section><section class="section" id="weekly"></section><section class="section" id="history"></section><section class="section" id="progress"></section><section class="section" id="analytics"></section><section class="section" id="settings"></section><div class="footer">Пока данные сохраняются на этом устройстве. Облачное подключение тестируется отдельно; резервные копии остаются необходимыми. История из Google Таблицы автоматически не импортируется.</div></main><div class="toast" id="toast"></div><input id="importFile" type="file" accept="application/json,.json" hidden><input id="healthImportFile" type="file" accept="application/json,.json" hidden><script>
+</style></head><body><main class="wrap"><header class="head"><div><div class="brand">ФОРМА <span>80</span></div><div class="sub">Сила • движение • прогресс</div></div><span class="pill">v2.7 · CYBER</span></header><section class="cy-dashboard" id="cyDashboard" aria-label="Сводка активности"></section><nav class="tabs" id="mainTabs"><button data-page="workout" class="active">Тренировка</button><button data-page="weekly">Неделя</button><button data-page="history">История</button><button data-page="progress">Прогресс</button><button data-page="analytics">Аналитика</button><button data-page="settings">Настройки</button></nav><section class="section active" id="workout"></section><section class="section" id="weekly"></section><section class="section" id="history"></section><section class="section" id="progress"></section><section class="section" id="analytics"></section><section class="section" id="settings"></section><div class="footer">Пока данные сохраняются на этом устройстве. Облачное подключение тестируется отдельно; резервные копии остаются необходимыми. История из Google Таблицы автоматически не импортируется.</div></main><div class="toast" id="toast"></div><input id="importFile" type="file" accept="application/json,.json" hidden><input id="healthImportFile" type="file" accept="application/json,.json" hidden><script>
 'use strict';
 const HEALTHKEY='forma80_health_v1';let healthDb=null;try{healthDb=JSON.parse(localStorage.getItem(HEALTHKEY)||'null')}catch{}const DBKEY='forma80_v1';const CUTOVER='2026-11-23';
 // Approved program is bundled offline. Remote Sheets sync requires a separately deployed read-only endpoint.
@@ -282,14 +282,23 @@ $('healthImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file
 const SUPABASE_URL='https://rdakhmnbjkrvictgxstb.supabase.co';
 const SUPABASE_PUBLISHABLE='sb_publishable_Wiwt0nUnugAFc5mlEUT2Mw_9-CM4yKE';
 let cloudClient=null,cloudUser=null,cloudError='';
+let cloudRecoveryMode=location.hash.includes('type=recovery')||new URLSearchParams(location.search).get('type')==='recovery';
 async function cloudInit(){
  try{
   const mod=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   cloudClient=mod.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  cloudClient.auth.onAuthStateChange((event,session)=>{
+   cloudUser=session?.user||null;
+   if(event==='PASSWORD_RECOVERY'){
+    cloudRecoveryMode=true;ui.page='settings';render();window.scrollTo(0,0);
+   }else if(event==='SIGNED_OUT'){cloudRecoveryMode=false}
+   if(cloudUser)healthCloudPull(true);
+   if(ui.page==='settings')renderSettings();
+  });
   const {data,error}=await cloudClient.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')cloudError=error.message;
   cloudUser=data?.user||null;
+  if(cloudRecoveryMode){ui.page='settings';render()}
   if(cloudUser)healthCloudPull(true);
-  cloudClient.auth.onAuthStateChange((_event,session)=>{cloudUser=session?.user||null;if(cloudUser)healthCloudPull(true);if(ui.page==='settings')renderSettings()});
  }catch(e){cloudError='Не удалось загрузить модуль авторизации: '+e.message}
  if(ui.page==='settings')renderSettings();
 }
@@ -388,13 +397,46 @@ async function cloudExchange(direction){
  finally{cloudBusy=false;render()}
 }
 function cloudCard(){
- let html='<div class="card"><h2>Облачный аккаунт · синхронизация v2.2</h2><p class="small muted">Ручной обмен результатами через Supabase. Пустые черновики не передаются; черновик можно заменить тренировкой с выполненными подходами. Разные реальные результаты не перезаписываются. Показатели здоровья не отправляются.</p>';
- if(cloudUser){html+='<p class="detail">Вход выполнен: <b>'+esc(cloudUser.email||'аккаунт')+'</b></p><div class="btnrow"><button class="btn primary" id="cloudUpload" '+(cloudBusy?'disabled':'')+'>↑ Загрузить новые тренировки</button><button class="btn" id="cloudDownload" '+(cloudBusy?'disabled':'')+'>↓ Получить новые тренировки</button><button class="btn" id="cloudLogout">Выйти</button></div><p class="small muted">Перед обменом сохраняй резервную копию. Удаления не синхронизируются; сравниваются выполненные подходы, а не служебные поля.</p>'}
- else{html+='<label class="label" for="cloudEmail">Электронная почта</label><input class="date" type="email" id="cloudEmail" autocomplete="email" placeholder="Ваш email"><div class="btnrow"><button class="btn primary" id="cloudLogin" '+(!cloudClient?'disabled':'')+'>Отправить ссылку для входа</button></div><p class="small muted">Открой ссылку из письма в этом браузере. При первом входе Supabase может создать учётную запись.</p>'}
+ let html='<div class="card"><h2>Учётная запись</h2><p class="small muted">Вход, восстановление пароля и безопасность облачной учётной записи.</p>';
+ if(cloudRecoveryMode){
+  html+='<h3>Установить новый пароль</h3><p class="small muted">Ссылка восстановления подтверждена? Придумай новый пароль (не менее 8 символов).</p><input class="date" id="newCloudPassword" type="password" autocomplete="new-password" placeholder="Новый пароль"><input class="date" id="repeatCloudPassword" type="password" autocomplete="new-password" placeholder="Повтори пароль"><button class="btn primary full" id="cloudSetPassword">Сохранить новый пароль</button>';
+ }
+ if(cloudUser){
+  html+='<p class="detail">Аккаунт: <b>'+esc(cloudUser.email||'аккаунт')+'</b></p><div class="btnrow"><button class="btn primary" id="cloudUpload" '+(cloudBusy?'disabled':'')+'>↑ Загрузить новые тренировки</button><button class="btn" id="cloudDownload" '+(cloudBusy?'disabled':'')+'>↓ Получить новые тренировки</button><button class="btn" id="cloudLogout">Выйти</button></div><button class="btn" id="cloudChangePassword">Изменить пароль</button><p class="small muted">Тренировки синхронизируются вручную. Данные здоровья загружаются из облака отдельно. Резервные копии по-прежнему нужны.</p>';
+ }else{
+  html+='<label class="label" for="cloudEmail">Электронная почта</label><input class="date" type="email" id="cloudEmail" autocomplete="email" placeholder="Ваш email"><div class="btnrow"><button class="btn primary" id="cloudLogin" '+(!cloudClient?'disabled':'')+'>Отправить ссылку для входа</button><button class="btn" id="cloudResetPassword" '+(!cloudClient?'disabled':'')+'>Восстановить пароль</button></div><p class="small muted">Ссылка из письма откроет «Форму 80». После перехода можно задать новый пароль.</p>';
+ }
  if(cloudError)html+='<p class="detail" style="color:#ffb4a8">'+esc(cloudError)+'</p>';
  return html+'</div>';
 }
 function cloudBind(){
+ if($('cloudSetPassword'))$('cloudSetPassword').onclick=async()=>{
+  const pass=$('newCloudPassword').value,repeat=$('repeatCloudPassword').value;
+  if(pass.length<8){alert('Пароль должен содержать не менее 8 символов');return}
+  if(pass!==repeat){alert('Пароли не совпадают');return}
+  if(!cloudClient){alert('Подключение ещё не готово');return}
+  $('cloudSetPassword').disabled=true;
+  try{
+   const {data:{session},error:sessionError}=await cloudClient.auth.getSession();
+   if(sessionError||!session)throw Error('Ссылка восстановления истекла. Запроси новое письмо.');
+   const {error}=await cloudClient.auth.updateUser({password:pass});
+   if(error)throw error;
+   cloudRecoveryMode=false;cloudError='';renderSettings();alert('Пароль сохранён. Теперь его можно использовать в Android-компаньоне.');
+  }catch(e){cloudError=e.message;renderSettings()}
+ };
+ if($('cloudChangePassword'))$('cloudChangePassword').onclick=()=>{cloudRecoveryMode=true;renderSettings()};
+ if($('cloudResetPassword'))$('cloudResetPassword').onclick=async()=>{
+  const email=$('cloudEmail').value.trim();
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){alert('Укажи корректный email');return}
+  $('cloudResetPassword').disabled=true;
+  try{
+   const {error}=await cloudClient.auth.resetPasswordForEmail(email,{redirectTo:'https://archebald97.github.io/Forma-80/'});
+   if(error)throw error;
+   toast('Письмо для восстановления отправлено');
+  }catch(e){cloudError=e.message;renderSettings()}
+  finally{if($('cloudResetPassword'))$('cloudResetPassword').disabled=false}
+ };
+
  if($('cloudUpload'))$('cloudUpload').onclick=()=>cloudExchange('upload');
  if($('cloudDownload'))$('cloudDownload').onclick=()=>cloudExchange('download');
  if($('cloudLogin'))$('cloudLogin').onclick=async()=>{
