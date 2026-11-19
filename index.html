@@ -139,7 +139,7 @@ function cloudCard(){
 }
 function cloudBind(){
  if($('cloudLogin'))$('cloudLogin').onclick=async()=>{
-  const email=$('cloudEmail').value.trim();if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){alert('Укажи корректный email');return}
+  const email=$('cloudEmail').value.trim();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){alert('Укажи корректный email');return}
   $('cloudLogin').disabled=true;
   try{const {error}=await cloudClient.auth.signInWithOtp({email,options:{emailRedirectTo:'https://archebald97.github.io/Forma-80/'}});if(error)throw error;toast('Письмо для входа отправлено. Проверь почту.')}
   catch(e){cloudError=e.message;renderSettings()}
