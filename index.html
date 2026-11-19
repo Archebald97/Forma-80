@@ -308,7 +308,7 @@ async function healthCloudPull(silent=false){
   const days={...(healthDb?.schema===1&&healthDb.days||{})};
   let count=0;
   for(const row of data||[]){
-   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.day)||!row.metrics||typeof row.metrics!=='object'||Array.isArray(row.metrics))continue;
+   if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(row.day)||!row.metrics||typeof row.metrics!=='object'||Array.isArray(row.metrics))continue;
    const clean={};
    for(const k of allowed)if(Number.isFinite(row.metrics[k])&&row.metrics[k]>=0&&row.metrics[k]<=1e7)clean[k]=row.metrics[k];
    if(Object.keys(clean).length){days[row.day]={...(days[row.day]||{}),...clean};count++}
